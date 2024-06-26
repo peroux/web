@@ -1,4 +1,5 @@
 document.getElementById('theme-toggle').addEventListener('click', function () {
+    console.log('Button clicked');
     const body = document.body;
     if (body.classList.contains('light-theme')) {
         body.classList.remove('light-theme');
