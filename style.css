@@ -18,28 +18,27 @@ body {
     color: #000000; /* Light theme color */
 }
 
-/* Light theme styles */
-body.light-theme {
-    background-color: #ffffff;
-    color: #000000;
-}
-
-body.light-theme header {
-    background-color: #f0f0f0;
-    color: #000000;
-}
-
-body.light-theme button {
-    background-color: #000000;
-    color: #ffffff;
+hr {
+    width: 100%;
     border: none;
-    padding: 10px 20px;
-    cursor: pointer;
+    border-top: 2px solid #777777; /* Dark theme color */
+    margin: 0; /* Remove default margins */
+}
+
+canvas#overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none; /* Ensure the canvas does not block interactions */
+    z-index: 10; /* Ensure the canvas is on top of other elements */
 }
 
 /* Dark theme styles */
 body.dark-theme {
     background-color: #121212;
+    /* border: 2px solid #e0e0e0; */
     color: #e0e0e0;
 }
 
