@@ -43,6 +43,10 @@ body {
     overflow: hidden; /* Hide overflow */
 }
 
+.ascii-background span {
+    display: inline-block;
+}
+
 .content {
     position: relative;
     z-index: 2;
@@ -71,7 +75,7 @@ canvas#overlay {
 
 /* Dark theme styles */
 body.dark-theme {
-    background-color: #121212;
+    background-image: linear-gradient(-9deg, #121212 35%, #1a044b 200%);
     color: #e0e0e0;
 }
 
