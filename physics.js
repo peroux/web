@@ -4,7 +4,7 @@ const ctx = canvas.getContext('2d');
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 
-const gravity = 0.5; // Added gravity for shooting stars
+const gravity = 0.05; // Slower falling gravity for shooting stars
 const friction = 0.9;
 const { charWidth, lineHeight } = measureCharSize();
 
@@ -15,9 +15,9 @@ function getGroundLevel() {
     const hrElement = document.querySelector('hr');
     if (hrElement) {
         const rect = hrElement.getBoundingClientRect();
-        return rect.top;
+        return rect.top + 100; // Lower the ground line
     }
-    return canvas.height - 20; // Fallback
+    return canvas.height - 80; // Fallback - lower
 }
 
 let groundLevel = getGroundLevel();
@@ -213,24 +213,42 @@ class Star {
         this.y = y;
         this.baseRadius = 2;
         this.radius = this.baseRadius;
-        this.twinkleSpeed = Math.random() * 0.02 + 0.01; // Slower twinkle
-        this.twinkleOffset = Math.random() * Math.PI * 2;
         this.brightness = Math.random() * 0.5 + 0.5;
         this.glowRadius = 40 + Math.random() * 20;
         
         // Calculate position in grid
         this.gridX = Math.floor(this.x / charWidth);
         this.gridY = Math.floor(this.y / lineHeight);
+        
+        // Random twinkle interval between 15-120 seconds
+        this.twinkleInterval = (Math.random() * 105 + 15) * 1000; // 15-120 seconds in ms
+        this.lastTwinkle = Date.now() + Math.random() * this.twinkleInterval; // Random start offset
+        this.isTwinkling = false;
+        this.twinkleDuration = 2000; // 2 second twinkle duration
+        this.twinkleStart = 0;
     }
 
     draw() {
+        // Check if it's time to twinkle
+        const now = Date.now();
+        if (!this.isTwinkling && now - this.lastTwinkle >= this.twinkleInterval) {
+            this.isTwinkling = true;
+            this.twinkleStart = now;
+            this.lastTwinkle = now;
+        }
+        
+        // Update twinkle state
+        if (this.isTwinkling && now - this.twinkleStart >= this.twinkleDuration) {
+            this.isTwinkling = false;
+        }
+        
         // Draw the star as a + symbol in the background
         this.updateBackgroundStar();
         
-        // Draw glisten effects when bright
-        const twinkle = Math.sin(Date.now() * this.twinkleSpeed + this.twinkleOffset) * 0.5 + 0.5;
-        
-        if (twinkle > 0.7) {
+        // Draw glisten effects when twinkling
+        if (this.isTwinkling) {
+            const progress = (now - this.twinkleStart) / this.twinkleDuration;
+            const twinkle = Math.sin(progress * Math.PI); // Smooth in/out
             this.drawGlistenEffect(twinkle);
         }
     }
@@ -240,8 +258,10 @@ class Star {
         const spans = window.backgroundSpans || asciiBackground.querySelectorAll('span');
         const spanIndex = this.gridY * colsPerRow + this.gridX;
         
-        const twinkle = Math.sin(Date.now() * this.twinkleSpeed + this.twinkleOffset) * 0.5 + 0.5;
-        const intensity = twinkle * this.brightness;
+        const intensity = this.isTwinkling ? 
+            (Math.sin((Date.now() - this.twinkleStart) / this.twinkleDuration * Math.PI) * 0.5 + 0.5) * this.brightness : 
+            this.brightness * 0.5;
+        
         const r = Math.floor(200 + intensity * 55);
         const g = Math.floor(200 + intensity * 55);
         const b = Math.floor(200 + intensity * 55);
@@ -258,7 +278,7 @@ class Star {
         const colsPerRow = Math.ceil(window.innerWidth / charWidth);
         const spans = window.backgroundSpans || asciiBackground.querySelectorAll('span');
         
-        const glowIntensity = (twinkle - 0.7) / 0.3; // 0 to 1 when twinkle is 0.7 to 1.0
+        const glowIntensity = twinkle;
         const r = Math.floor(200 + glowIntensity * 55);
         const g = Math.floor(200 + glowIntensity * 55);
         const b = Math.floor(200 + glowIntensity * 55);
@@ -331,6 +351,34 @@ class Moon {
         ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
         ctx.fill();
         
+        // Moon craters/spots
+        ctx.fillStyle = 'rgba(180, 180, 160, 0.5)';
+        
+        // Large crater
+        ctx.beginPath();
+        ctx.arc(this.x - this.radius * 0.3, this.y - this.radius * 0.2, this.radius * 0.15, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Medium crater
+        ctx.beginPath();
+        ctx.arc(this.x + this.radius * 0.25, this.y + this.radius * 0.15, this.radius * 0.1, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Small crater
+        ctx.beginPath();
+        ctx.arc(this.x + this.radius * 0.1, this.y - this.radius * 0.4, this.radius * 0.08, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Another small crater
+        ctx.beginPath();
+        ctx.arc(this.x - this.radius * 0.15, this.y + this.radius * 0.35, this.radius * 0.07, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Tiny crater
+        ctx.beginPath();
+        ctx.arc(this.x + this.radius * 0.4, this.y - this.radius * 0.1, this.radius * 0.05, 0, Math.PI * 2);
+        ctx.fill();
+        
         ctx.restore();
     }
 
@@ -379,9 +427,9 @@ class NorthernLights {
         for (let i = 0; i < this.numWaves; i++) {
             this.waves.push({
                 yOffset: (canvas.height * 0.2) + (i * 60),
-                speed: 0.0002 + (i * 0.0001), // Slower speed
+                speed: 0.00005 + (i * 0.00003), // Much slower speed
                 amplitude: 40 + (i * 20),
-                frequency: 0.003 + (i * 0.001),
+                frequency: 0.002 + (i * 0.0005), // Slower frequency
                 color: i === 0 ? [0, 255, 150] : i === 1 ? [50, 200, 255] : [150, 100, 255],
                 offset: Math.random() * 1000
             });
@@ -432,11 +480,61 @@ let textArray = [];
 let stars = [];
 let moon;
 let northernLights;
-let dayNightCycle = {
-    cycleLength: 120000, // 2 minutes for full day/night cycle
-    startTime: Date.now(),
-    isNight: true
-};
+let campfire;
+
+// Campfire class
+class Campfire {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.gridX = Math.floor(this.x / charWidth);
+        this.gridY = Math.floor(this.y / lineHeight);
+    }
+    
+    draw() {
+        const colsPerRow = Math.ceil(window.innerWidth / charWidth);
+        const spans = window.backgroundSpans || asciiBackground.querySelectorAll('span');
+        
+        // Campfire ASCII art (offset from grid position)
+        const campfireArt = [
+            '    (  )  (  )',
+            '     )  (  )',
+            '    (  )  (',
+            '  ___||_||___',
+            ' (___    ___)',
+            '    |    |'
+        ];
+        
+        // Draw campfire
+        for (let i = 0; i < campfireArt.length; i++) {
+            const row = this.gridY + i;
+            const line = campfireArt[i];
+            
+            for (let j = 0; j < line.length; j++) {
+                const col = this.gridX + j - Math.floor(line.length / 2);
+                const spanIndex = row * colsPerRow + col;
+                
+                if (spanIndex >= 0 && spanIndex < spans.length && line[j] !== ' ') {
+                    spans[spanIndex].textContent = line[j];
+                    
+                    // Color based on position (flame colors)
+                    if (i < 3) {
+                        // Flames - orange/red with flicker
+                        const flicker = Math.random() * 0.3 + 0.7;
+                        const r = Math.floor(255 * flicker);
+                        const g = Math.floor((100 + Math.random() * 50) * flicker);
+                        const b = 0;
+                        spans[spanIndex].style.color = `rgb(${r}, ${g}, ${b})`;
+                    } else {
+                        // Wood - brown
+                        spans[spanIndex].style.color = '#8B4513';
+                    }
+                    spans[spanIndex].setAttribute('data-campfire', 'true');
+                }
+            }
+        }
+    }
+}
 
 function isPositionValid(x, y) {
     // Check if position overlaps with moon
@@ -480,14 +578,24 @@ function init() {
     // Create northern lights
     northernLights = new NorthernLights();
     
-    // Create shooting stars at intervals
-    setInterval(() => {
+    // Create campfire at ground level
+    campfire = new Campfire(canvas.width / 2, groundLevel - 100);
+    
+    // Function to spawn shooting stars at random intervals
+    function spawnShootingStar() {
         const x = Math.random() * canvas.width;
         const y = 0;
-        const dx = (Math.random() - 0.5) * 4;
-        const dy = Math.random() * 2 + 2; // Faster initial downward velocity
-        textArray.push(new TextParticle(x, y, dx, dy, '*', '30px Arial', 'yellow')); // Smaller shooting stars
-    }, 5000); // Create a new shooting star every 5 seconds (less frequent)
+        const dx = (Math.random() * 3 - 1.5) * 2; // More horizontal variation for sloped angle
+        const dy = Math.random() * 0.5 + 0.5; // Slower initial downward velocity
+        textArray.push(new TextParticle(x, y, dx, dy, '*', '30px Arial', 'yellow'));
+        
+        // Schedule next shooting star with random delay between 10-120 seconds
+        const nextDelay = (Math.random() * 110 + 10) * 1000;
+        setTimeout(spawnShootingStar, nextDelay);
+    }
+    
+    // Start the first shooting star
+    spawnShootingStar();
 }
 
 function animate() {
@@ -496,22 +604,22 @@ function animate() {
     // Reset background characters to | with base color periodically
     resetBackgroundCharacters();
     
-    // Update day/night cycle
-    updateDayNightCycle();
-    
-    // Draw northern lights first (background) - only at night
-    if (northernLights && dayNightCycle.isNight) {
+    // Draw northern lights first (background)
+    if (northernLights) {
         northernLights.draw();
     }
     
-    // Draw moon (draws after northern lights) - only at night
-    if (moon && dayNightCycle.isNight) {
+    // Draw moon (draws after northern lights)
+    if (moon) {
         moon.draw();
     }
     
-    // Draw stationary stars - only at night
-    if (dayNightCycle.isNight) {
-        stars.forEach(star => star.draw());
+    // Draw stationary stars
+    stars.forEach(star => star.draw());
+    
+    // Draw campfire
+    if (campfire) {
+        campfire.draw();
     }
     
     // Update and draw shooting stars
@@ -521,72 +629,16 @@ function animate() {
     requestAnimationFrame(animate);
 }
 
-function updateDayNightCycle() {
-    const elapsed = Date.now() - dayNightCycle.startTime;
-    const progress = (elapsed % dayNightCycle.cycleLength) / dayNightCycle.cycleLength;
-    
-    // 0.0 - 0.5 = night, 0.5 - 1.0 = day
-    const wasNight = dayNightCycle.isNight;
-    dayNightCycle.isNight = progress < 0.5;
-    
-    // Transition colors
-    let bgColor, textColor;
-    
-    if (progress < 0.25) {
-        // Deep night
-        bgColor = '#121212';
-        textColor = '#191919';
-    } else if (progress < 0.5) {
-        // Dawn transition
-        const transitionProgress = (progress - 0.25) / 0.25;
-        bgColor = interpolateColor('#121212', '#87CEEB', transitionProgress);
-        textColor = interpolateColor('#191919', '#4682B4', transitionProgress);
-    } else if (progress < 0.75) {
-        // Day
-        bgColor = '#87CEEB'; // Sky blue
-        textColor = '#4682B4'; // Steel blue
-    } else {
-        // Dusk transition
-        const transitionProgress = (progress - 0.75) / 0.25;
-        bgColor = interpolateColor('#87CEEB', '#121212', transitionProgress);
-        textColor = interpolateColor('#4682B4', '#191919', transitionProgress);
-    }
-    
-    // Apply background color to body
-    document.body.style.backgroundColor = bgColor;
-    
-    // Update base character color
-    const spans = window.backgroundSpans || asciiBackground.querySelectorAll('span');
-    for (let i = 0; i < spans.length; i++) {
-        if (!spans[i].hasAttribute('data-explosion') && 
-            !spans[i].hasAttribute('data-star') && 
-            !spans[i].hasAttribute('data-glisten') &&
-            !spans[i].hasAttribute('data-aurora')) {
-            spans[i].style.color = textColor;
-        }
-    }
-}
-
-function interpolateColor(color1, color2, progress) {
-    const c1 = parseInt(color1.slice(1), 16);
-    const c2 = parseInt(color2.slice(1), 16);
-    
-    const r = Math.floor(((c1 >> 16) & 0xff) * (1 - progress) + ((c2 >> 16) & 0xff) * progress);
-    const g = Math.floor(((c1 >> 8) & 0xff) * (1 - progress) + ((c2 >> 8) & 0xff) * progress);
-    const b = Math.floor((c1 & 0xff) * (1 - progress) + (c2 & 0xff) * progress);
-    
-    return `#${((1 << 24) | (r << 16) | (g << 8) | b).toString(16).slice(1)}`;
-}
-
 function resetBackgroundCharacters() {
     const spans = window.backgroundSpans || asciiBackground.querySelectorAll('span');
     
     for (let i = 0; i < spans.length; i++) {
-        // Skip explosion, star, glisten, and aurora marked spans
+        // Skip explosion, star, glisten, aurora, and campfire marked spans
         if (spans[i].hasAttribute('data-explosion') || 
             spans[i].hasAttribute('data-star') || 
             spans[i].hasAttribute('data-glisten') ||
-            spans[i].hasAttribute('data-aurora')) {
+            spans[i].hasAttribute('data-aurora') ||
+            spans[i].hasAttribute('data-campfire')) {
             continue;
         }
         
@@ -638,4 +690,5 @@ window.addEventListener('resize', () => {
     
     moon = new Moon(canvas.width * 0.15, canvas.height * 0.2, 40);
     northernLights = new NorthernLights();
+    campfire = new Campfire(canvas.width / 2, groundLevel - 100);
 });
