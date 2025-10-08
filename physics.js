@@ -9,7 +9,18 @@ const friction = 0.9;
 const { charWidth, lineHeight } = measureCharSize();
 
 const asciiBackground = document.querySelector('.ascii-background');
-const groundLevel = canvas.height - 20; // Ground level for collision detection (closer to bottom)
+
+// Calculate ground level based on the HR element position
+function getGroundLevel() {
+    const hrElement = document.querySelector('hr');
+    if (hrElement) {
+        const rect = hrElement.getBoundingClientRect();
+        return rect.top;
+    }
+    return canvas.height - 20; // Fallback
+}
+
+let groundLevel = getGroundLevel();
 
 function measureCharSize() {
     const tempSpan = document.createElement('span');
@@ -204,57 +215,79 @@ class Star {
         this.twinkleSpeed = Math.random() * 0.05 + 0.02;
         this.twinkleOffset = Math.random() * Math.PI * 2;
         this.brightness = Math.random() * 0.5 + 0.5;
-        this.glowRadius = 40 + Math.random() * 20; // Glow radius
+        this.glowRadius = 40 + Math.random() * 20;
+        
+        // Calculate position in grid
+        this.gridX = Math.floor(this.x / charWidth);
+        this.gridY = Math.floor(this.y / lineHeight);
     }
 
     draw() {
-        // Draw glow effect on background
-        this.updateBackgroundGlow();
+        // Draw the star as a + symbol in the background
+        this.updateBackgroundStar();
         
-        // Draw the star itself
-        const twinkle = Math.sin(Date.now() * this.twinkleSpeed + this.twinkleOffset) * 0.3 + 0.7;
-        const alpha = this.brightness * twinkle;
+        // Draw glisten effects when bright
+        const twinkle = Math.sin(Date.now() * this.twinkleSpeed + this.twinkleOffset) * 0.5 + 0.5;
         
-        ctx.save();
-        ctx.fillStyle = `rgba(255, 255, 200, ${alpha})`;
-        ctx.beginPath();
-        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
+        if (twinkle > 0.7) {
+            this.drawGlistenEffect(twinkle);
+        }
     }
 
-    updateBackgroundGlow() {
+    updateBackgroundStar() {
         const colsPerRow = Math.ceil(window.innerWidth / charWidth);
-        const centerX = Math.floor(this.x / charWidth);
-        const centerY = Math.floor(this.y / lineHeight);
-        const glowRadiusInChars = Math.ceil(this.glowRadius / Math.min(charWidth, lineHeight));
-        
-        const startX = Math.max(0, centerX - glowRadiusInChars);
-        const endX = Math.min(colsPerRow, centerX + glowRadiusInChars);
-        const startY = Math.max(0, centerY - glowRadiusInChars);
-        const endY = Math.min(Math.ceil(window.innerHeight / lineHeight), centerY + glowRadiusInChars);
-        
         const spans = window.backgroundSpans || asciiBackground.querySelectorAll('span');
-        const twinkle = Math.sin(Date.now() * this.twinkleSpeed + this.twinkleOffset) * 0.3 + 0.7;
+        const spanIndex = this.gridY * colsPerRow + this.gridX;
         
-        for (let i = startY; i < endY; i++) {
-            for (let j = startX; j < endX; j++) {
-                const distance = Math.sqrt(Math.pow(i - centerY, 2) + Math.pow(j - centerX, 2));
-                const charDistance = distance * Math.min(charWidth, lineHeight);
-                
-                if (charDistance <= this.glowRadius) {
-                    const intensity = (1 - charDistance / this.glowRadius) * 0.15 * twinkle * this.brightness;
-                    const r = Math.floor(25 + intensity * 100);
-                    const g = Math.floor(25 + intensity * 100);
-                    const b = Math.floor(25 + intensity * 50);
-                    const color = `rgb(${r}, ${g}, ${b})`;
-                    
-                    const spanIndex = i * colsPerRow + j;
-                    if (spanIndex >= 0 && spanIndex < spans.length) {
-                        spans[spanIndex].style.color = color;
-                    }
-                }
-            }
+        const twinkle = Math.sin(Date.now() * this.twinkleSpeed + this.twinkleOffset) * 0.5 + 0.5;
+        const intensity = twinkle * this.brightness;
+        const r = Math.floor(200 + intensity * 55);
+        const g = Math.floor(200 + intensity * 55);
+        const b = Math.floor(200 + intensity * 55);
+        
+        if (spanIndex >= 0 && spanIndex < spans.length) {
+            // Replace | with + for the star
+            spans[spanIndex].textContent = '+';
+            spans[spanIndex].style.color = `rgb(${r}, ${g}, ${b})`;
+        }
+    }
+
+    drawGlistenEffect(twinkle) {
+        const colsPerRow = Math.ceil(window.innerWidth / charWidth);
+        const spans = window.backgroundSpans || asciiBackground.querySelectorAll('span');
+        
+        const glowIntensity = (twinkle - 0.7) / 0.3; // 0 to 1 when twinkle is 0.7 to 1.0
+        const r = Math.floor(200 + glowIntensity * 55);
+        const g = Math.floor(200 + glowIntensity * 55);
+        const b = Math.floor(200 + glowIntensity * 55);
+        const color = `rgb(${r}, ${g}, ${b})`;
+        
+        // Top (|)
+        const topIndex = (this.gridY - 1) * colsPerRow + this.gridX;
+        if (topIndex >= 0 && topIndex < spans.length && this.gridY > 0) {
+            spans[topIndex].textContent = '|';
+            spans[topIndex].style.color = color;
+        }
+        
+        // Bottom (|)
+        const bottomIndex = (this.gridY + 1) * colsPerRow + this.gridX;
+        if (bottomIndex >= 0 && bottomIndex < spans.length) {
+            spans[bottomIndex].textContent = '|';
+            spans[bottomIndex].style.color = color;
+        }
+        
+        // Left (-)
+        const leftIndex = this.gridY * colsPerRow + (this.gridX - 1);
+        if (leftIndex >= 0 && leftIndex < spans.length && this.gridX > 0) {
+            spans[leftIndex].textContent = '-';
+            spans[leftIndex].style.color = color;
+        }
+        
+        // Right (-)
+        const rightIndex = this.gridY * colsPerRow + (this.gridX + 1);
+        if (rightIndex >= 0 && rightIndex < spans.length) {
+            spans[rightIndex].textContent = '-';
+            spans[rightIndex].style.color = color;
         }
     }
 }
@@ -330,9 +363,68 @@ class Moon {
     }
 }
 
+// Northern Lights class
+class NorthernLights {
+    constructor() {
+        this.waves = [];
+        this.numWaves = 3;
+        
+        // Create multiple waves
+        for (let i = 0; i < this.numWaves; i++) {
+            this.waves.push({
+                yOffset: (canvas.height * 0.2) + (i * 60),
+                speed: 0.0005 + (i * 0.0002),
+                amplitude: 40 + (i * 20),
+                frequency: 0.003 + (i * 0.001),
+                color: i === 0 ? [0, 255, 150] : i === 1 ? [50, 200, 255] : [150, 100, 255],
+                offset: Math.random() * 1000
+            });
+        }
+    }
+
+    draw() {
+        const colsPerRow = Math.ceil(window.innerWidth / charWidth);
+        const spans = window.backgroundSpans || asciiBackground.querySelectorAll('span');
+        const time = Date.now();
+        
+        for (let wave of this.waves) {
+            const maxHeight = Math.ceil((wave.yOffset + wave.amplitude * 2) / lineHeight);
+            const minHeight = Math.floor((wave.yOffset - wave.amplitude * 2) / lineHeight);
+            
+            for (let i = minHeight; i < maxHeight; i++) {
+                if (i < 0 || i >= Math.ceil(canvas.height / lineHeight)) continue;
+                
+                for (let j = 0; j < colsPerRow; j++) {
+                    const x = j * charWidth;
+                    const waveY = wave.yOffset + Math.sin((x * wave.frequency) + (time * wave.speed) + wave.offset) * wave.amplitude;
+                    const currentY = i * lineHeight;
+                    
+                    const distanceFromWave = Math.abs(currentY - waveY);
+                    
+                    if (distanceFromWave < wave.amplitude) {
+                        const intensity = (1 - distanceFromWave / wave.amplitude) * 0.4;
+                        const flowOffset = Math.sin((x * 0.01) + (time * 0.001) + wave.offset) * 0.2;
+                        const finalIntensity = intensity * (0.5 + flowOffset);
+                        
+                        const r = Math.floor(25 + wave.color[0] * finalIntensity);
+                        const g = Math.floor(25 + wave.color[1] * finalIntensity);
+                        const b = Math.floor(25 + wave.color[2] * finalIntensity);
+                        
+                        const spanIndex = i * colsPerRow + j;
+                        if (spanIndex >= 0 && spanIndex < spans.length) {
+                            spans[spanIndex].style.color = `rgb(${r}, ${g}, ${b})`;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 let textArray = [];
 let stars = [];
 let moon;
+let northernLights;
 
 function init() {
     // Create stationary stars
@@ -345,6 +437,9 @@ function init() {
     
     // Create moon
     moon = new Moon(canvas.width * 0.15, canvas.height * 0.2, 40);
+    
+    // Create northern lights
+    northernLights = new NorthernLights();
     
     // Create shooting stars at intervals
     setInterval(() => {
@@ -359,7 +454,15 @@ function init() {
 function animate() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
-    // Draw moon (draws first so it's behind everything)
+    // Reset background characters to | with base color periodically
+    resetBackgroundCharacters();
+    
+    // Draw northern lights first (background)
+    if (northernLights) {
+        northernLights.draw();
+    }
+    
+    // Draw moon (draws after northern lights)
     if (moon) {
         moon.draw();
     }
@@ -374,6 +477,18 @@ function animate() {
     requestAnimationFrame(animate);
 }
 
+function resetBackgroundCharacters() {
+    const spans = window.backgroundSpans || asciiBackground.querySelectorAll('span');
+    
+    for (let i = 0; i < spans.length; i++) {
+        // Reset to | character and base color
+        if (spans[i].textContent !== '|') {
+            spans[i].textContent = '|';
+        }
+        spans[i].style.color = '#191919';
+    }
+}
+
 init();
 animate();
 
@@ -381,6 +496,9 @@ window.addEventListener('resize', () => {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
     generateAsciiBackground();
+    
+    // Update ground level
+    groundLevel = getGroundLevel();
     
     // Recreate stars and moon for new dimensions
     stars = [];
@@ -391,4 +509,5 @@ window.addEventListener('resize', () => {
         stars.push(new Star(x, y));
     }
     moon = new Moon(canvas.width * 0.15, canvas.height * 0.2, 40);
+    northernLights = new NorthernLights();
 });
