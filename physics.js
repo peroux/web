@@ -15,7 +15,7 @@ function getGroundLevel() {
     const hrElement = document.querySelector('hr');
     if (hrElement) {
         const rect = hrElement.getBoundingClientRect();
-        return rect.bottom + 50; // Position below the HR line
+        return rect.bottom; // Position below the HR line
     }
     return canvas.height - 100; // Fallback - lower
 }
@@ -141,13 +141,16 @@ function animateExplosion(x, y, radius) {
 
     // OPTIMIZATION: Pre-calculate affected area
     const colsPerRow = Math.ceil(window.innerWidth / charWidth);
-    const startX = Math.max(0, Math.floor(x / charWidth) - Math.floor(radius));
-    const endX = Math.min(colsPerRow, Math.ceil(x / charWidth) + Math.ceil(radius));
-    const startY = Math.max(0, Math.floor(y / lineHeight) - Math.floor(radius));
-    const endY = Math.min(Math.ceil(window.innerHeight / lineHeight), Math.ceil(y / lineHeight) + Math.ceil(radius));
     
     // Calculate ground row to prevent explosion going below it
+    // Start explosion one grid space down from the impact point
     const groundRow = Math.floor(groundLevel / lineHeight);
+    const explosionCenterY = groundRow - 1; // One grid space above ground
+    
+    const startX = Math.max(0, Math.floor(x / charWidth) - Math.floor(radius));
+    const endX = Math.min(colsPerRow, Math.ceil(x / charWidth) + Math.ceil(radius));
+    const startY = Math.max(0, explosionCenterY - Math.floor(radius));
+    const endY = Math.min(groundRow, explosionCenterY + Math.ceil(radius)); // Don't go past ground
 
     let frame = 0;
 
@@ -159,14 +162,14 @@ function animateExplosion(x, y, radius) {
         const spans = window.backgroundSpans || asciiBackground.querySelectorAll('span');
         
         for (let i = startY; i < endY; i++) {
-            // Skip rows below ground
+            // Skip rows at or below ground
             if (i >= groundRow) continue;
             
             for (let j = startX; j < endX; j++) {
-                const distance = Math.sqrt(Math.pow(i - y / lineHeight, 2) + Math.pow(j - x / charWidth, 2));
+                const distance = Math.sqrt(Math.pow(i - explosionCenterY, 2) + Math.pow(j - x / charWidth, 2));
                 
                 // Only draw above ground (semi-circle effect)
-                if (distance <= currentRadius && i < groundRow) {
+                if (distance <= currentRadius) {
                     const percentage = distance / currentRadius;
                     const color = getGradientColor(startColor, endColor, percentage);
                     const spanIndex = i * colsPerRow + j;
@@ -188,8 +191,8 @@ function animateExplosion(x, y, radius) {
                     if (i >= groundRow) continue;
                     
                     for (let j = startX; j < endX; j++) {
-                        const distance = Math.sqrt(Math.pow(i - y / lineHeight, 2) + Math.pow(j - x / charWidth, 2));
-                        if (distance <= radius && i < groundRow) {
+                        const distance = Math.sqrt(Math.pow(i - explosionCenterY, 2) + Math.pow(j - x / charWidth, 2));
+                        if (distance <= radius) {
                             const spanIndex = i * colsPerRow + j;
                             if (spanIndex >= 0 && spanIndex < spans.length) {
                                 spans[spanIndex].removeAttribute('data-explosion'); // Remove marker
@@ -489,6 +492,77 @@ let stars = [];
 let moon;
 let northernLights;
 let campfire;
+let pineTree;
+
+// Pine Tree class
+class PineTree {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.gridX = Math.floor(this.x / charWidth);
+        this.gridY = Math.floor(this.y / lineHeight);
+        this.windOffset = 0;
+    }
+    
+    draw() {
+        const colsPerRow = Math.ceil(window.innerWidth / charWidth);
+        const spans = window.backgroundSpans || asciiBackground.querySelectorAll('span');
+        
+        const time = Date.now();
+        
+        // Pine tree ASCII art using braille characters
+        const treeArt = [
+            '        ⢀        ',
+            '      ⣰⣿⣄      ',
+            '    ⢀⣼⣿⡿⣿⣦⡀    ',
+            '   ⢛⣿⡛⠁⣀⠉⠻⠦   ',
+            '  ⣠⣿⣿⣧⣰⣿⢿⣶⣤  ',
+            '  ⣽⣿⣿⣿⡿⠃⡀⠛⠉⠃  ',
+            ' ⢾⣿⣿⣿⣇⠀⣼⣿⣆⠀⣀ ',
+            '⢀⣼⣿⣿⣿⣿⣼⣿⣧⠙⢷⣿⣷⣄',
+            '⣠⣾⣿⣿⣿⣿⣿⣿⣿⣿⣀⡀⠙⠉',
+            '⠴⢿⣿⣿⣿⠿⠟⠻⢿⣿⣿⢿⣿⡶⠛⠷⠆',
+            '⢀⣾⣿⣿⣿⢀⣴⣶⣤⡈⠛⠀⣄⡉⠀⢰⡄',
+            '⢠⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣤⣿⣿⣿⣶⣿⡄',
+            '⠉⠉⠀⠀⠿⠿⠛⠋⣿⣿⡟⠿⡿⠉⠛⠿⠿⠛⠋',
+            '      ⢀⣿⣿⡇      ',
+            '      ⠘⠛⠛⠓      '
+        ];
+        
+        // Determine colors for each row
+        for (let i = 0; i < treeArt.length; i++) {
+            const row = this.gridY + i + 1; // Move down one grid space
+            const line = treeArt[i];
+            
+            // Apply wind sway - more movement at top, less at trunk
+            // Each row has slightly different wind phase for more natural movement
+            let windShift = 0;
+            if (i < 13) { // Only foliage moves
+                const rowPhase = i * 0.3; // Phase offset for each row
+                const windStrength = (12 - i) / 12; // Stronger sway at top
+                this.windOffset = Math.sin(time * 0.001 + rowPhase) * 1.5 * windStrength;
+                windShift = Math.floor(this.windOffset);
+            }
+            
+            for (let j = 0; j < line.length; j++) {
+                const col = this.gridX + j - Math.floor(line.length / 2) + windShift;
+                const spanIndex = row * colsPerRow + col;
+                
+                if (spanIndex >= 0 && spanIndex < spans.length && line[j] !== ' ') {
+                    spans[spanIndex].textContent = line[j];
+                    
+                    // Color: green for foliage (rows 0-12), brown for trunk (rows 13-14)
+                    if (i < 13) {
+                        spans[spanIndex].style.color = '#165408'; // Forest green
+                    } else {
+                        spans[spanIndex].style.color = '#8B4513'; // Brown
+                    }
+                    spans[spanIndex].setAttribute('data-tree', 'true');
+                }
+            }
+        }
+    }
+}
 
 // Campfire class
 class Campfire {
@@ -497,25 +571,36 @@ class Campfire {
         this.y = y;
         this.gridX = Math.floor(this.x / charWidth);
         this.gridY = Math.floor(this.y / lineHeight);
+        this.smokeParticles = [];
+        this.windOffset = 0;
+        this.windDirection = 1;
+        this.windChangeTime = Date.now() + Math.random() * 3000 + 2000; // Change direction every 2-5 seconds
     }
     
     draw() {
         const colsPerRow = Math.ceil(window.innerWidth / charWidth);
         const spans = window.backgroundSpans || asciiBackground.querySelectorAll('span');
         
-        // Campfire ASCII art
-        const campfireArt = [
-            '      .(',
-            '    /%/\\',
-            '  (%(%))' ,
+        // Update wind direction randomly
+        const now = Date.now();
+        if (now > this.windChangeTime) {
+            this.windDirection = (Math.random() - 0.5) * 4; // Random direction between -2 and 2
+            this.windChangeTime = now + Math.random() * 3000 + 2000;
+        }
+        
+        // Update wind offset for flame animation with random direction
+        this.windOffset = Math.sin(Date.now() * 0.002) * this.windDirection;
+        
+        // Base campfire structure (wood and base)
+        const woodArt = [
             '  .-\'..`-.',
-            ' `-\'.\'`-\'dd'
+            ' `-\'.\'`-\''
         ];
         
-        // Draw campfire
-        for (let i = 0; i < campfireArt.length; i++) {
-            const row = this.gridY + i;
-            const line = campfireArt[i];
+        // Draw wood (stationary)
+        for (let i = 0; i < woodArt.length; i++) {
+            const row = this.gridY + 3 + i;
+            const line = woodArt[i];
             
             for (let j = 0; j < line.length; j++) {
                 const col = this.gridX + j - Math.floor(line.length / 2);
@@ -523,23 +608,80 @@ class Campfire {
                 
                 if (spanIndex >= 0 && spanIndex < spans.length && line[j] !== ' ') {
                     spans[spanIndex].textContent = line[j];
-                    
-                    // Color based on position (flame colors)
-                    if (i < 3) {
-                        // Flames - orange/red with flicker
-                        const flicker = Math.random() * 0.3 + 0.7;
-                        const r = Math.floor(255 * flicker);
-                        const g = Math.floor((100 + Math.random() * 50) * flicker);
-                        const b = 0;
-                        spans[spanIndex].style.color = `rgb(${r}, ${g}, ${b})`;
-                    } else {
-                        // Wood - brown
-                        spans[spanIndex].style.color = '#8B4513';
-                    }
+                    spans[spanIndex].style.color = '#8B4513';
                     spans[spanIndex].setAttribute('data-campfire', 'true');
                 }
             }
         }
+        
+        // Animated flames
+        const flameArt = [
+            '     .(',
+            '    /%/\\',
+            '  (%(%))' 
+        ];
+        
+        // Draw flames with wind effect
+        for (let i = 0; i < flameArt.length; i++) {
+            const row = this.gridY + i;
+            const line = flameArt[i];
+            const windShift = Math.floor(this.windOffset * (3 - i) / 3); // More movement at top
+            
+            for (let j = 0; j < line.length; j++) {
+                const col = this.gridX + j - Math.floor(line.length / 2) + windShift;
+                const spanIndex = row * colsPerRow + col;
+                
+                if (spanIndex >= 0 && spanIndex < spans.length && line[j] !== ' ') {
+                    spans[spanIndex].textContent = line[j];
+                    
+                    // Animated flame colors
+                    const flicker = Math.random() * 0.3 + 0.7;
+                    const r = Math.floor(255 * flicker);
+                    const g = Math.floor((100 + Math.random() * 50) * flicker);
+                    const b = 0;
+                    spans[spanIndex].style.color = `rgb(${r}, ${g}, ${b})`;
+                    spans[spanIndex].setAttribute('data-campfire', 'true');
+                }
+            }
+        }
+        
+        // Spawn smoke particles occasionally (reduced frequency)
+        if (Math.random() < 0.02) { // Reduced from 0.1 to 0.02 (80% less smoke)
+            this.smokeParticles.push({
+                x: this.gridX + Math.floor(Math.random() * 3 - 1),
+                y: this.gridY - 1,
+                age: 0,
+                maxAge: 30 + Math.random() * 20,
+                drift: (Math.random() - 0.5) * 0.5
+            });
+        }
+        
+        // Update and draw smoke particles
+        this.smokeParticles = this.smokeParticles.filter(particle => {
+            particle.age++;
+            particle.y -= 0.3;
+            particle.x += particle.drift;
+            
+            if (particle.age >= particle.maxAge) {
+                return false;
+            }
+            
+            const smokeRow = Math.floor(particle.y);
+            const smokeCol = Math.floor(particle.x);
+            const smokeIndex = smokeRow * colsPerRow + smokeCol;
+            
+            if (smokeIndex >= 0 && smokeIndex < spans.length) {
+                spans[smokeIndex].textContent = '#';
+                
+                // Fade smoke color based on age
+                const opacity = 1 - (particle.age / particle.maxAge);
+                const grayValue = Math.floor(100 + opacity * 100);
+                spans[smokeIndex].style.color = `rgb(${grayValue}, ${grayValue}, ${grayValue})`;
+                spans[smokeIndex].setAttribute('data-campfire', 'true');
+            }
+            
+            return true;
+        });
     }
 }
 
@@ -585,10 +727,18 @@ function init() {
     // Create northern lights
     northernLights = new NorthernLights();
     
-    // Create campfire at ground level (will be updated when ground level is set)
+    // Create campfire and pine tree at ground level (wait for ground level to be set)
     setTimeout(() => {
-        campfire = new Campfire(canvas.width / 2, groundLevel - 80);
-    }, 150);
+        // Position campfire so the wood sits on the ground line
+        const campfireHeight = 5 * lineHeight; // 5 lines of campfire art
+        campfire = new Campfire(canvas.width / 2, groundLevel - campfireHeight + lineHeight);
+        console.log('Campfire positioned at:', groundLevel - campfireHeight + lineHeight);
+        
+        // Position pine tree to the left of campfire
+        const treeHeight = 15 * lineHeight; // 15 lines of tree art
+        pineTree = new PineTree(canvas.width / 2 - 200, groundLevel - treeHeight + lineHeight);
+        console.log('Pine tree positioned at:', groundLevel - treeHeight + lineHeight);
+    }, 200);
     
     // Function to spawn shooting stars at random intervals
     function spawnShootingStar() {
@@ -626,6 +776,11 @@ function animate() {
     // Draw stationary stars
     stars.forEach(star => star.draw());
     
+    // Draw pine tree
+    if (pineTree) {
+        pineTree.draw();
+    }
+    
     // Draw campfire
     if (campfire) {
         campfire.draw();
@@ -642,12 +797,8 @@ function resetBackgroundCharacters() {
     const spans = window.backgroundSpans || asciiBackground.querySelectorAll('span');
     
     for (let i = 0; i < spans.length; i++) {
-        // Skip explosion, star, glisten, aurora, and campfire marked spans
-        if (spans[i].hasAttribute('data-explosion') || 
-            spans[i].hasAttribute('data-star') || 
-            spans[i].hasAttribute('data-glisten') ||
-            spans[i].hasAttribute('data-aurora') ||
-            spans[i].hasAttribute('data-campfire')) {
+        // Skip explosion marked spans only (they manage their own lifecycle)
+        if (spans[i].hasAttribute('data-explosion')) {
             continue;
         }
         
@@ -658,7 +809,7 @@ function resetBackgroundCharacters() {
         spans[i].style.color = '#191919';
     }
     
-    // Clean up glisten markers (they're temporary)
+    // Clean up all temporary markers (they're redrawn each frame)
     for (let i = 0; i < spans.length; i++) {
         if (spans[i].hasAttribute('data-glisten')) {
             spans[i].removeAttribute('data-glisten');
@@ -668,6 +819,12 @@ function resetBackgroundCharacters() {
         }
         if (spans[i].hasAttribute('data-star')) {
             spans[i].removeAttribute('data-star');
+        }
+        if (spans[i].hasAttribute('data-campfire')) {
+            spans[i].removeAttribute('data-campfire');
+        }
+        if (spans[i].hasAttribute('data-tree')) {
+            spans[i].removeAttribute('data-tree');
         }
     }
 }
@@ -699,5 +856,8 @@ window.addEventListener('resize', () => {
     
     moon = new Moon(canvas.width * 0.15, canvas.height * 0.2, 40);
     northernLights = new NorthernLights();
-    campfire = new Campfire(canvas.width / 2, groundLevel - 80);
+    const campfireHeight = 5 * lineHeight;
+    campfire = new Campfire(canvas.width / 2, groundLevel - campfireHeight + lineHeight);
+    const treeHeight = 15 * lineHeight;
+    pineTree = new PineTree(canvas.width / 2 - 200, groundLevel - treeHeight + lineHeight);
 });
