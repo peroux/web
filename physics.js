@@ -15,12 +15,20 @@ function getGroundLevel() {
     const hrElement = document.querySelector('hr');
     if (hrElement) {
         const rect = hrElement.getBoundingClientRect();
-        return rect.top + 100; // Lower the ground line
+        return rect.bottom + 50; // Position below the HR line
     }
-    return canvas.height - 80; // Fallback - lower
+    return canvas.height - 100; // Fallback - lower
 }
 
-let groundLevel = getGroundLevel();
+let groundLevel = canvas.height - 100; // Initial value
+
+// Update ground level after page loads
+window.addEventListener('load', () => {
+    setTimeout(() => {
+        groundLevel = getGroundLevel();
+        console.log('Ground level set to:', groundLevel);
+    }, 100);
+});
 
 function measureCharSize() {
     const tempSpan = document.createElement('span');
@@ -495,14 +503,13 @@ class Campfire {
         const colsPerRow = Math.ceil(window.innerWidth / charWidth);
         const spans = window.backgroundSpans || asciiBackground.querySelectorAll('span');
         
-        // Campfire ASCII art (offset from grid position)
+        // Campfire ASCII art
         const campfireArt = [
-            '    (  )  (  )',
-            '     )  (  )',
-            '    (  )  (',
-            '  ___||_||___',
-            ' (___    ___)',
-            '    |    |'
+            '      .(',
+            '    /%/\\',
+            '  (%(%))' ,
+            '  .-\'..`-.',
+            ' `-\'.\'`-\'dd'
         ];
         
         // Draw campfire
@@ -578,8 +585,10 @@ function init() {
     // Create northern lights
     northernLights = new NorthernLights();
     
-    // Create campfire at ground level
-    campfire = new Campfire(canvas.width / 2, groundLevel - 100);
+    // Create campfire at ground level (will be updated when ground level is set)
+    setTimeout(() => {
+        campfire = new Campfire(canvas.width / 2, groundLevel - 80);
+    }, 150);
     
     // Function to spawn shooting stars at random intervals
     function spawnShootingStar() {
@@ -690,5 +699,5 @@ window.addEventListener('resize', () => {
     
     moon = new Moon(canvas.width * 0.15, canvas.height * 0.2, 40);
     northernLights = new NorthernLights();
-    campfire = new Campfire(canvas.width / 2, groundLevel - 100);
+    campfire = new Campfire(canvas.width / 2, groundLevel - 80);
 });
