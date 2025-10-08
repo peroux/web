@@ -9,7 +9,7 @@ const friction = 0.9;
 const { charWidth, lineHeight } = measureCharSize();
 
 const asciiBackground = document.querySelector('.ascii-background');
-const groundLevel = canvas.height - 50; // Ground level for collision detection
+const groundLevel = canvas.height - 20; // Ground level for collision detection (closer to bottom)
 
 function measureCharSize() {
     const tempSpan = document.createElement('span');
@@ -80,7 +80,7 @@ class TextParticle {
         // Check for ground collision
         if (this.y + this.dy >= groundLevel) {
             if (!this.exploded) {
-                animateExplosion(this.x, this.y, 5);
+                animateExplosion(this.x, groundLevel, 5); // Explosion at ground level
                 this.exploded = true;
                 this.shouldRemove = true;
             }
@@ -126,6 +126,9 @@ function animateExplosion(x, y, radius) {
     const endX = Math.min(colsPerRow, Math.ceil(x / charWidth) + Math.ceil(radius));
     const startY = Math.max(0, Math.floor(y / lineHeight) - Math.floor(radius));
     const endY = Math.min(Math.ceil(window.innerHeight / lineHeight), Math.ceil(y / lineHeight) + Math.ceil(radius));
+    
+    // Calculate ground row to prevent explosion going below it
+    const groundRow = Math.floor(groundLevel / lineHeight);
 
     let frame = 0;
 
@@ -137,9 +140,14 @@ function animateExplosion(x, y, radius) {
         const spans = window.backgroundSpans || asciiBackground.querySelectorAll('span');
         
         for (let i = startY; i < endY; i++) {
+            // Skip rows below ground
+            if (i >= groundRow) continue;
+            
             for (let j = startX; j < endX; j++) {
                 const distance = Math.sqrt(Math.pow(i - y / lineHeight, 2) + Math.pow(j - x / charWidth, 2));
-                if (distance <= currentRadius) {
+                
+                // Only draw above ground (semi-circle effect)
+                if (distance <= currentRadius && i < groundRow) {
                     const percentage = distance / currentRadius;
                     const color = getGradientColor(startColor, endColor, percentage);
                     const spanIndex = i * colsPerRow + j;
@@ -157,9 +165,11 @@ function animateExplosion(x, y, radius) {
             // Revert the explosion effect
             setTimeout(() => {
                 for (let i = startY; i < endY; i++) {
+                    if (i >= groundRow) continue;
+                    
                     for (let j = startX; j < endX; j++) {
                         const distance = Math.sqrt(Math.pow(i - y / lineHeight, 2) + Math.pow(j - x / charWidth, 2));
-                        if (distance <= radius) {
+                        if (distance <= radius && i < groundRow) {
                             const spanIndex = i * colsPerRow + j;
                             if (spanIndex >= 0 && spanIndex < spans.length) {
                                 spans[spanIndex].style.color = originalColor;
@@ -342,8 +352,8 @@ function init() {
         const y = 0;
         const dx = (Math.random() - 0.5) * 4;
         const dy = Math.random() * 2 + 2; // Faster initial downward velocity
-        textArray.push(new TextParticle(x, y, dx, dy, '*', '50px Arial', 'yellow'));
-    }, 1500); // Create a new shooting star every 1.5 seconds
+        textArray.push(new TextParticle(x, y, dx, dy, '*', '30px Arial', 'yellow')); // Smaller shooting stars
+    }, 3000); // Create a new shooting star every 3 seconds (less frequent)
 }
 
 function animate() {
