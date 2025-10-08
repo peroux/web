@@ -148,8 +148,8 @@ canvas#overlay {
 }
 
 .dropdown:hover .dropdown-btn {
-    background-color: rgba(224, 224, 224, 0.2);
-    border-color: rgba(224, 224, 224, 0.5);
+    background-color: rgba(224, 224, 224, 0.1);
+    border-color: rgba(224, 224, 224, 0.3);
 }
 
 /* Dark theme styles */

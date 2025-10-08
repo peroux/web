@@ -164,6 +164,7 @@ function animateExplosion(x, y, radius) {
                     const spanIndex = i * colsPerRow + j;
                     if (spanIndex >= 0 && spanIndex < spans.length) {
                         spans[spanIndex].style.color = color;
+                        spans[spanIndex].setAttribute('data-explosion', 'true'); // Mark as explosion
                     }
                 }
             }
@@ -183,7 +184,7 @@ function animateExplosion(x, y, radius) {
                         if (distance <= radius && i < groundRow) {
                             const spanIndex = i * colsPerRow + j;
                             if (spanIndex >= 0 && spanIndex < spans.length) {
-                                spans[spanIndex].style.color = originalColor;
+                                spans[spanIndex].removeAttribute('data-explosion'); // Remove marker
                             }
                         }
                     }
@@ -212,7 +213,7 @@ class Star {
         this.y = y;
         this.baseRadius = 2;
         this.radius = this.baseRadius;
-        this.twinkleSpeed = Math.random() * 0.05 + 0.02;
+        this.twinkleSpeed = Math.random() * 0.02 + 0.01; // Slower twinkle
         this.twinkleOffset = Math.random() * Math.PI * 2;
         this.brightness = Math.random() * 0.5 + 0.5;
         this.glowRadius = 40 + Math.random() * 20;
@@ -249,6 +250,7 @@ class Star {
             // Replace | with + for the star
             spans[spanIndex].textContent = '+';
             spans[spanIndex].style.color = `rgb(${r}, ${g}, ${b})`;
+            spans[spanIndex].setAttribute('data-star', 'true'); // Mark as star
         }
     }
 
@@ -267,6 +269,7 @@ class Star {
         if (topIndex >= 0 && topIndex < spans.length && this.gridY > 0) {
             spans[topIndex].textContent = '|';
             spans[topIndex].style.color = color;
+            spans[topIndex].setAttribute('data-glisten', 'true');
         }
         
         // Bottom (|)
@@ -274,6 +277,7 @@ class Star {
         if (bottomIndex >= 0 && bottomIndex < spans.length) {
             spans[bottomIndex].textContent = '|';
             spans[bottomIndex].style.color = color;
+            spans[bottomIndex].setAttribute('data-glisten', 'true');
         }
         
         // Left (-)
@@ -281,6 +285,7 @@ class Star {
         if (leftIndex >= 0 && leftIndex < spans.length && this.gridX > 0) {
             spans[leftIndex].textContent = '-';
             spans[leftIndex].style.color = color;
+            spans[leftIndex].setAttribute('data-glisten', 'true');
         }
         
         // Right (-)
@@ -288,6 +293,7 @@ class Star {
         if (rightIndex >= 0 && rightIndex < spans.length) {
             spans[rightIndex].textContent = '-';
             spans[rightIndex].style.color = color;
+            spans[rightIndex].setAttribute('data-glisten', 'true');
         }
     }
 }
@@ -373,7 +379,7 @@ class NorthernLights {
         for (let i = 0; i < this.numWaves; i++) {
             this.waves.push({
                 yOffset: (canvas.height * 0.2) + (i * 60),
-                speed: 0.0005 + (i * 0.0002),
+                speed: 0.0002 + (i * 0.0001), // Slower speed
                 amplitude: 40 + (i * 20),
                 frequency: 0.003 + (i * 0.001),
                 color: i === 0 ? [0, 255, 150] : i === 1 ? [50, 200, 255] : [150, 100, 255],
@@ -403,7 +409,7 @@ class NorthernLights {
                     
                     if (distanceFromWave < wave.amplitude) {
                         const intensity = (1 - distanceFromWave / wave.amplitude) * 0.4;
-                        const flowOffset = Math.sin((x * 0.01) + (time * 0.001) + wave.offset) * 0.2;
+                        const flowOffset = Math.sin((x * 0.01) + (time * 0.0005) + wave.offset) * 0.2; // Slower flow
                         const finalIntensity = intensity * (0.5 + flowOffset);
                         
                         const r = Math.floor(25 + wave.color[0] * finalIntensity);
@@ -413,6 +419,7 @@ class NorthernLights {
                         const spanIndex = i * colsPerRow + j;
                         if (spanIndex >= 0 && spanIndex < spans.length) {
                             spans[spanIndex].style.color = `rgb(${r}, ${g}, ${b})`;
+                            spans[spanIndex].setAttribute('data-aurora', 'true');
                         }
                     }
                 }
@@ -425,14 +432,46 @@ let textArray = [];
 let stars = [];
 let moon;
 let northernLights;
+let dayNightCycle = {
+    cycleLength: 120000, // 2 minutes for full day/night cycle
+    startTime: Date.now(),
+    isNight: true
+};
+
+function isPositionValid(x, y) {
+    // Check if position overlaps with moon
+    if (moon) {
+        const distToMoon = Math.sqrt(Math.pow(x - moon.x, 2) + Math.pow(y - moon.y, 2));
+        if (distToMoon < moon.radius + 50) return false;
+    }
+    
+    // Check if position overlaps with logo area (center of screen)
+    const logoX = canvas.width / 2;
+    const logoY = canvas.height / 2;
+    const distToLogo = Math.sqrt(Math.pow(x - logoX, 2) + Math.pow(y - logoY, 2));
+    if (distToLogo < 200) return false; // Keep away from center logo area
+    
+    // Check if too close to other stars
+    for (let star of stars) {
+        const dist = Math.sqrt(Math.pow(x - star.x, 2) + Math.pow(y - star.y, 2));
+        if (dist < 60) return false; // Minimum distance between stars
+    }
+    
+    return true;
+}
 
 function init() {
-    // Create stationary stars
+    // Create stationary stars with proper spacing
     const starCount = 30;
-    for (let i = 0; i < starCount; i++) {
+    let attempts = 0;
+    while (stars.length < starCount && attempts < 200) {
         const x = Math.random() * canvas.width;
         const y = Math.random() * (canvas.height * 0.6); // Stars in upper 60% of screen
-        stars.push(new Star(x, y));
+        
+        if (isPositionValid(x, y)) {
+            stars.push(new Star(x, y));
+        }
+        attempts++;
     }
     
     // Create moon
@@ -448,7 +487,7 @@ function init() {
         const dx = (Math.random() - 0.5) * 4;
         const dy = Math.random() * 2 + 2; // Faster initial downward velocity
         textArray.push(new TextParticle(x, y, dx, dy, '*', '30px Arial', 'yellow')); // Smaller shooting stars
-    }, 3000); // Create a new shooting star every 3 seconds (less frequent)
+    }, 5000); // Create a new shooting star every 5 seconds (less frequent)
 }
 
 function animate() {
@@ -457,18 +496,23 @@ function animate() {
     // Reset background characters to | with base color periodically
     resetBackgroundCharacters();
     
-    // Draw northern lights first (background)
-    if (northernLights) {
+    // Update day/night cycle
+    updateDayNightCycle();
+    
+    // Draw northern lights first (background) - only at night
+    if (northernLights && dayNightCycle.isNight) {
         northernLights.draw();
     }
     
-    // Draw moon (draws after northern lights)
-    if (moon) {
+    // Draw moon (draws after northern lights) - only at night
+    if (moon && dayNightCycle.isNight) {
         moon.draw();
     }
     
-    // Draw stationary stars
-    stars.forEach(star => star.draw());
+    // Draw stationary stars - only at night
+    if (dayNightCycle.isNight) {
+        stars.forEach(star => star.draw());
+    }
     
     // Update and draw shooting stars
     textArray.forEach(textParticle => textParticle.update());
@@ -477,15 +521,93 @@ function animate() {
     requestAnimationFrame(animate);
 }
 
+function updateDayNightCycle() {
+    const elapsed = Date.now() - dayNightCycle.startTime;
+    const progress = (elapsed % dayNightCycle.cycleLength) / dayNightCycle.cycleLength;
+    
+    // 0.0 - 0.5 = night, 0.5 - 1.0 = day
+    const wasNight = dayNightCycle.isNight;
+    dayNightCycle.isNight = progress < 0.5;
+    
+    // Transition colors
+    let bgColor, textColor;
+    
+    if (progress < 0.25) {
+        // Deep night
+        bgColor = '#121212';
+        textColor = '#191919';
+    } else if (progress < 0.5) {
+        // Dawn transition
+        const transitionProgress = (progress - 0.25) / 0.25;
+        bgColor = interpolateColor('#121212', '#87CEEB', transitionProgress);
+        textColor = interpolateColor('#191919', '#4682B4', transitionProgress);
+    } else if (progress < 0.75) {
+        // Day
+        bgColor = '#87CEEB'; // Sky blue
+        textColor = '#4682B4'; // Steel blue
+    } else {
+        // Dusk transition
+        const transitionProgress = (progress - 0.75) / 0.25;
+        bgColor = interpolateColor('#87CEEB', '#121212', transitionProgress);
+        textColor = interpolateColor('#4682B4', '#191919', transitionProgress);
+    }
+    
+    // Apply background color to body
+    document.body.style.backgroundColor = bgColor;
+    
+    // Update base character color
+    const spans = window.backgroundSpans || asciiBackground.querySelectorAll('span');
+    for (let i = 0; i < spans.length; i++) {
+        if (!spans[i].hasAttribute('data-explosion') && 
+            !spans[i].hasAttribute('data-star') && 
+            !spans[i].hasAttribute('data-glisten') &&
+            !spans[i].hasAttribute('data-aurora')) {
+            spans[i].style.color = textColor;
+        }
+    }
+}
+
+function interpolateColor(color1, color2, progress) {
+    const c1 = parseInt(color1.slice(1), 16);
+    const c2 = parseInt(color2.slice(1), 16);
+    
+    const r = Math.floor(((c1 >> 16) & 0xff) * (1 - progress) + ((c2 >> 16) & 0xff) * progress);
+    const g = Math.floor(((c1 >> 8) & 0xff) * (1 - progress) + ((c2 >> 8) & 0xff) * progress);
+    const b = Math.floor((c1 & 0xff) * (1 - progress) + (c2 & 0xff) * progress);
+    
+    return `#${((1 << 24) | (r << 16) | (g << 8) | b).toString(16).slice(1)}`;
+}
+
 function resetBackgroundCharacters() {
     const spans = window.backgroundSpans || asciiBackground.querySelectorAll('span');
     
     for (let i = 0; i < spans.length; i++) {
+        // Skip explosion, star, glisten, and aurora marked spans
+        if (spans[i].hasAttribute('data-explosion') || 
+            spans[i].hasAttribute('data-star') || 
+            spans[i].hasAttribute('data-glisten') ||
+            spans[i].hasAttribute('data-aurora')) {
+            continue;
+        }
+        
         // Reset to | character and base color
         if (spans[i].textContent !== '|') {
             spans[i].textContent = '|';
         }
         spans[i].style.color = '#191919';
+    }
+    
+    // Clean up glisten markers (they're temporary)
+    for (let i = 0; i < spans.length; i++) {
+        if (spans[i].hasAttribute('data-glisten')) {
+            spans[i].removeAttribute('data-glisten');
+        }
+        if (spans[i].hasAttribute('data-aurora')) {
+            spans[i].removeAttribute('data-aurora');
+        }
+        if (spans[i].hasAttribute('data-star')) {
+            spans[i].removeAttribute('data-star');
+        }
     }
 }
 
@@ -500,14 +622,20 @@ window.addEventListener('resize', () => {
     // Update ground level
     groundLevel = getGroundLevel();
     
-    // Recreate stars and moon for new dimensions
+    // Recreate stars with proper spacing
     stars = [];
     const starCount = 30;
-    for (let i = 0; i < starCount; i++) {
+    let attempts = 0;
+    while (stars.length < starCount && attempts < 200) {
         const x = Math.random() * canvas.width;
         const y = Math.random() * (canvas.height * 0.6);
-        stars.push(new Star(x, y));
+        
+        if (isPositionValid(x, y)) {
+            stars.push(new Star(x, y));
+        }
+        attempts++;
     }
+    
     moon = new Moon(canvas.width * 0.15, canvas.height * 0.2, 40);
     northernLights = new NorthernLights();
 });
