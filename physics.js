@@ -168,7 +168,7 @@ function init() {
         const y = 0;
         const dx = (Math.random() - 0.5) * 4;
         const dy = Math.random() * 4;
-        textArray.push(new TextParticle(x, y, dx, dy, '*', '20px Arial', 'yellow'));
+        textArray.push(new TextParticle(x, y, dx, dy, '*', '50px Arial', 'yellow'));
     }, 1000); // Create a new star every second
 }
 
