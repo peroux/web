@@ -10,23 +10,38 @@ const { charWidth, lineHeight } = measureCharSize();
 
 const asciiBackground = document.querySelector('.ascii-background');
 
-// Calculate ground level based on the HR element position
-function getGroundLevel() {
-    const hrElement = document.querySelector('hr');
-    if (hrElement) {
-        const rect = hrElement.getBoundingClientRect();
-        return rect.bottom; // Position below the HR line
+// ============= GROUND CONFIGURATION =============
+// Single configuration object for ground settings
+const GroundConfig = {
+    // Set this value to adjust ground height (pixels from bottom of screen)
+    // Increase this number to raise the ground higher on screen
+    offsetFromBottom: 0,
+    
+    // Get current ground level in pixels (calculated from HR element or fallback)
+    get level() {
+        const hrElement = document.querySelector('hr');
+        if (hrElement) {
+            const rect = hrElement.getBoundingClientRect();
+            return rect.bottom;
+        }
+        return canvas.height - this.offsetFromBottom;
+    },
+    
+    // Get ground level in grid rows
+    get row() {
+        return Math.floor(this.level / lineHeight);
+    },
+    
+    // Position an element at ground level given its height in grid rows
+    positionAtGround(heightInRows) {
+        return this.level - (heightInRows * lineHeight) + lineHeight;
     }
-    return canvas.height - 100; // Fallback - lower
-}
-
-let groundLevel = canvas.height - 100; // Initial value
+};
 
 // Update ground level after page loads
 window.addEventListener('load', () => {
     setTimeout(() => {
-        groundLevel = getGroundLevel();
-        console.log('Ground level set to:', groundLevel);
+        console.log('Ground level set to:', GroundConfig.level);
     }, 100);
 });
 
@@ -52,6 +67,9 @@ function generateAsciiBackground() {
 
     const rows = Math.ceil(height / lineHeight);
     const cols = Math.ceil(width / charWidth);
+
+    // Update cached dimensions
+    updateGridDimensions();
 
     // OPTIMIZATION: Create a document fragment to reduce reflows
     const fragment = document.createDocumentFragment();
@@ -97,9 +115,9 @@ class TextParticle {
 
     update() {
         // Check for ground collision
-        if (this.y + this.dy >= groundLevel) {
+        if (this.y + this.dy >= GroundConfig.level) {
             if (!this.exploded) {
-                animateExplosion(this.x, groundLevel, 5); // Explosion at ground level
+                animateExplosion(this.x, GroundConfig.level, 5); // Explosion at ground level
                 this.exploded = true;
                 this.shouldRemove = true;
             }
@@ -134,48 +152,50 @@ function getGradientColor(startColor, endColor, percentage) {
 function animateExplosion(x, y, radius) {
     const startColor = '#ff0000';
     const endColor = '#ffffff';
-    const originalColor = '#191919';
     const duration = 500;
     const frames = 30;
-    const startTime = Date.now();
 
-    // OPTIMIZATION: Pre-calculate affected area
-    const colsPerRow = Math.ceil(window.innerWidth / charWidth);
+    // Use cached dimensions with bounds checking
+    const colsPerRow = cachedColsPerRow || Math.ceil(window.innerWidth / charWidth);
+    const maxRow = cachedRows || Math.ceil(window.innerHeight / lineHeight);
     
-    // Calculate ground row to prevent explosion going below it
-    // Start explosion one grid space down from the impact point
-    const groundRow = Math.floor(groundLevel / lineHeight);
-    const explosionCenterY = groundRow - 1; // One grid space above ground
+    // Calculate explosion position relative to ground
+    const groundRow = GroundConfig.row;
+    const explosionCenterY = Math.max(0, groundRow - 1); // One grid space above ground
     
-    const startX = Math.max(0, Math.floor(x / charWidth) - Math.floor(radius));
-    const endX = Math.min(colsPerRow, Math.ceil(x / charWidth) + Math.ceil(radius));
+    // Robust bounds checking
+    const centerX = Math.floor(x / charWidth);
+    const startX = Math.max(0, centerX - Math.floor(radius));
+    const endX = Math.min(colsPerRow - 1, centerX + Math.ceil(radius));
     const startY = Math.max(0, explosionCenterY - Math.floor(radius));
-    const endY = Math.min(groundRow, explosionCenterY + Math.ceil(radius)); // Don't go past ground
+    const endY = Math.min(groundRow, explosionCenterY + Math.ceil(radius));
 
     let frame = 0;
+    let frameId = null;
 
     function drawFrame() {
         const progress = frame / frames;
         const currentRadius = radius * progress;
 
-        // OPTIMIZATION: Batch DOM updates
-        const spans = window.backgroundSpans || asciiBackground.querySelectorAll('span');
+        const spans = window.backgroundSpans;
+        if (!spans || spans.length === 0) {
+            if (frameId) explosionFrames.delete(frameId);
+            return;
+        }
         
-        for (let i = startY; i < endY; i++) {
-            // Skip rows at or below ground
+        for (let i = startY; i < endY && i < maxRow; i++) {
             if (i >= groundRow) continue;
             
-            for (let j = startX; j < endX; j++) {
-                const distance = Math.sqrt(Math.pow(i - explosionCenterY, 2) + Math.pow(j - x / charWidth, 2));
+            for (let j = startX; j < endX && j < colsPerRow; j++) {
+                const distance = Math.sqrt(Math.pow(i - explosionCenterY, 2) + Math.pow(j - centerX, 2));
                 
-                // Only draw above ground (semi-circle effect)
                 if (distance <= currentRadius) {
                     const percentage = distance / currentRadius;
                     const color = getGradientColor(startColor, endColor, percentage);
                     const spanIndex = i * colsPerRow + j;
                     if (spanIndex >= 0 && spanIndex < spans.length) {
                         spans[spanIndex].style.color = color;
-                        spans[spanIndex].setAttribute('data-explosion', 'true'); // Mark as explosion
+                        spans[spanIndex].setAttribute('data-explosion', 'true');
                     }
                 }
             }
@@ -183,19 +203,24 @@ function animateExplosion(x, y, radius) {
 
         frame++;
         if (frame <= frames) {
-            requestAnimationFrame(drawFrame);
+            frameId = requestAnimationFrame(drawFrame);
+            explosionFrames.add(frameId);
         } else {
-            // Revert the explosion effect
-            setTimeout(() => {
-                for (let i = startY; i < endY; i++) {
+            if (frameId) explosionFrames.delete(frameId);
+            // Cleanup explosion markers
+            const cleanupTimeout = setTimeout(() => {
+                const currentSpans = window.backgroundSpans;
+                if (!currentSpans) return;
+                
+                for (let i = startY; i < endY && i < maxRow; i++) {
                     if (i >= groundRow) continue;
                     
-                    for (let j = startX; j < endX; j++) {
-                        const distance = Math.sqrt(Math.pow(i - explosionCenterY, 2) + Math.pow(j - x / charWidth, 2));
+                    for (let j = startX; j < endX && j < colsPerRow; j++) {
+                        const distance = Math.sqrt(Math.pow(i - explosionCenterY, 2) + Math.pow(j - centerX, 2));
                         if (distance <= radius) {
                             const spanIndex = i * colsPerRow + j;
-                            if (spanIndex >= 0 && spanIndex < spans.length) {
-                                spans[spanIndex].removeAttribute('data-explosion'); // Remove marker
+                            if (spanIndex >= 0 && spanIndex < currentSpans.length) {
+                                currentSpans[spanIndex].removeAttribute('data-explosion');
                             }
                         }
                     }
@@ -265,8 +290,10 @@ class Star {
     }
 
     updateBackgroundStar() {
-        const colsPerRow = Math.ceil(window.innerWidth / charWidth);
-        const spans = window.backgroundSpans || asciiBackground.querySelectorAll('span');
+        const colsPerRow = cachedColsPerRow || Math.ceil(window.innerWidth / charWidth);
+        const spans = window.backgroundSpans;
+        if (!spans || spans.length === 0) return;
+        
         const spanIndex = this.gridY * colsPerRow + this.gridX;
         
         const intensity = this.isTwinkling ? 
@@ -286,8 +313,9 @@ class Star {
     }
 
     drawGlistenEffect(twinkle) {
-        const colsPerRow = Math.ceil(window.innerWidth / charWidth);
-        const spans = window.backgroundSpans || asciiBackground.querySelectorAll('span');
+        const colsPerRow = cachedColsPerRow || Math.ceil(window.innerWidth / charWidth);
+        const spans = window.backgroundSpans;
+        if (!spans || spans.length === 0) return;
         
         const glowIntensity = twinkle;
         const r = Math.floor(200 + glowIntensity * 55);
@@ -394,7 +422,8 @@ class Moon {
     }
 
     updateBackgroundGlow() {
-        const colsPerRow = Math.ceil(window.innerWidth / charWidth);
+        const colsPerRow = cachedColsPerRow || Math.ceil(window.innerWidth / charWidth);
+        const maxRow = cachedRows || Math.ceil(window.innerHeight / lineHeight);
         const centerX = Math.floor(this.x / charWidth);
         const centerY = Math.floor(this.y / lineHeight);
         const glowRadiusInChars = Math.ceil(this.glowRadius / Math.min(charWidth, lineHeight));
@@ -402,9 +431,10 @@ class Moon {
         const startX = Math.max(0, centerX - glowRadiusInChars);
         const endX = Math.min(colsPerRow, centerX + glowRadiusInChars);
         const startY = Math.max(0, centerY - glowRadiusInChars);
-        const endY = Math.min(Math.ceil(window.innerHeight / lineHeight), centerY + glowRadiusInChars);
+        const endY = Math.min(maxRow, centerY + glowRadiusInChars);
         
-        const spans = window.backgroundSpans || asciiBackground.querySelectorAll('span');
+        const spans = window.backgroundSpans;
+        if (!spans || spans.length === 0) return;
         
         for (let i = startY; i < endY; i++) {
             for (let j = startX; j < endX; j++) {
@@ -448,17 +478,18 @@ class NorthernLights {
     }
 
     draw() {
-        const colsPerRow = Math.ceil(window.innerWidth / charWidth);
-        const spans = window.backgroundSpans || asciiBackground.querySelectorAll('span');
+        const colsPerRow = cachedColsPerRow || Math.ceil(window.innerWidth / charWidth);
+        const maxRow = cachedRows || Math.ceil(canvas.height / lineHeight);
+        const spans = window.backgroundSpans;
+        if (!spans || spans.length === 0) return;
+        
         const time = Date.now();
         
         for (let wave of this.waves) {
-            const maxHeight = Math.ceil((wave.yOffset + wave.amplitude * 2) / lineHeight);
-            const minHeight = Math.floor((wave.yOffset - wave.amplitude * 2) / lineHeight);
+            const maxHeight = Math.min(maxRow, Math.ceil((wave.yOffset + wave.amplitude * 2) / lineHeight));
+            const minHeight = Math.max(0, Math.floor((wave.yOffset - wave.amplitude * 2) / lineHeight));
             
             for (let i = minHeight; i < maxHeight; i++) {
-                if (i < 0 || i >= Math.ceil(canvas.height / lineHeight)) continue;
-                
                 for (let j = 0; j < colsPerRow; j++) {
                     const x = j * charWidth;
                     const waveY = wave.yOffset + Math.sin((x * wave.frequency) + (time * wave.speed) + wave.offset) * wave.amplitude;
@@ -493,6 +524,20 @@ let moon;
 let northernLights;
 let campfire;
 let pineTree;
+let pineTree2;
+
+// Store animation frame IDs for cleanup
+let explosionFrames = new Set();
+let animationFrameId = null;
+
+// Cache grid dimensions
+let cachedColsPerRow = 0;
+let cachedRows = 0;
+
+function updateGridDimensions() {
+    cachedColsPerRow = Math.ceil(window.innerWidth / charWidth);
+    cachedRows = Math.ceil(window.innerHeight / lineHeight);
+}
 
 // Pine Tree class
 class PineTree {
@@ -501,12 +546,14 @@ class PineTree {
         this.y = y;
         this.gridX = Math.floor(this.x / charWidth);
         this.gridY = Math.floor(this.y / lineHeight);
-        this.windOffset = 0;
+        this.windPhase = Math.random() * Math.PI * 2; // Random starting phase for variety
     }
     
     draw() {
-        const colsPerRow = Math.ceil(window.innerWidth / charWidth);
-        const spans = window.backgroundSpans || asciiBackground.querySelectorAll('span');
+        const colsPerRow = cachedColsPerRow || Math.ceil(window.innerWidth / charWidth);
+        const maxRow = cachedRows || Math.ceil(window.innerHeight / lineHeight);
+        const spans = window.backgroundSpans;
+        if (!spans || spans.length === 0) return;
         
         const time = Date.now();
         
@@ -524,31 +571,36 @@ class PineTree {
             '⠴⢿⣿⣿⣿⠿⠟⠻⢿⣿⣿⢿⣿⡶⠛⠷⠆',
             '⢀⣾⣿⣿⣿⢀⣴⣶⣤⡈⠛⠀⣄⡉⠀⢰⡄',
             '⢠⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣤⣿⣿⣿⣶⣿⡄',
-            '⠉⠉⠀⠀⠿⠿⠛⠋⣿⣿⡟⠿⡿⠉⠛⠿⠿⠛⠋',
+            '⠉⠉⠿⠿⠛⠋⣿⣿⡟⠿⡿⠉⠛⠿⠿⠛⠋',
             '      ⢀⣿⣿⡇      ',
             '      ⠘⠛⠛⠓      '
         ];
         
-        // Determine colors for each row
+        // Draw tree with subtle wind effect
         for (let i = 0; i < treeArt.length; i++) {
-            const row = this.gridY + i + 1; // Move down one grid space
+            const row = this.gridY + i + 1; // Start one grid down
+            if (row >= maxRow) break;
+            
             const line = treeArt[i];
             
-            // Apply wind sway - more movement at top, less at trunk
-            // Each row has slightly different wind phase for more natural movement
+            // Very subtle wind - only top foliage moves slightly
             let windShift = 0;
             if (i < 13) { // Only foliage moves
-                const rowPhase = i * 0.3; // Phase offset for each row
-                const windStrength = (12 - i) / 12; // Stronger sway at top
-                this.windOffset = Math.sin(time * 0.001 + rowPhase) * 1.5 * windStrength;
-                windShift = Math.floor(this.windOffset);
+                const rowPhase = i * 0.2; // Phase offset for each row
+                const windStrength = (12 - i) / 24; // Reduced strength (was /12, now /24)
+                const windSway = Math.sin(time * 0.0008 + this.windPhase + rowPhase) * 0.4; // Much slower and gentler
+                windShift = Math.floor(windSway * windStrength);
             }
             
             for (let j = 0; j < line.length; j++) {
+                if (line[j] === ' ') continue;
+                
                 const col = this.gridX + j - Math.floor(line.length / 2) + windShift;
+                if (col < 0 || col >= colsPerRow) continue;
+                
                 const spanIndex = row * colsPerRow + col;
                 
-                if (spanIndex >= 0 && spanIndex < spans.length && line[j] !== ' ') {
+                if (spanIndex >= 0 && spanIndex < spans.length) {
                     spans[spanIndex].textContent = line[j];
                     
                     // Color: green for foliage (rows 0-12), brown for trunk (rows 13-14)
@@ -578,8 +630,10 @@ class Campfire {
     }
     
     draw() {
-        const colsPerRow = Math.ceil(window.innerWidth / charWidth);
-        const spans = window.backgroundSpans || asciiBackground.querySelectorAll('span');
+        const colsPerRow = cachedColsPerRow || Math.ceil(window.innerWidth / charWidth);
+        const maxRow = cachedRows || Math.ceil(window.innerHeight / lineHeight);
+        const spans = window.backgroundSpans;
+        if (!spans || spans.length === 0) return;
         
         // Update wind direction randomly
         const now = Date.now();
@@ -589,7 +643,7 @@ class Campfire {
         }
         
         // Update wind offset for flame animation with random direction
-        this.windOffset = Math.sin(Date.now() * 0.002) * this.windDirection;
+        this.windOffset = Math.sin(now * 0.002) * this.windDirection;
         
         // Base campfire structure (wood and base)
         const woodArt = [
@@ -600,13 +654,19 @@ class Campfire {
         // Draw wood (stationary)
         for (let i = 0; i < woodArt.length; i++) {
             const row = this.gridY + 3 + i;
+            if (row >= maxRow) continue;
+            
             const line = woodArt[i];
             
             for (let j = 0; j < line.length; j++) {
+                if (line[j] === ' ') continue;
+                
                 const col = this.gridX + j - Math.floor(line.length / 2);
+                if (col < 0 || col >= colsPerRow) continue;
+                
                 const spanIndex = row * colsPerRow + col;
                 
-                if (spanIndex >= 0 && spanIndex < spans.length && line[j] !== ' ') {
+                if (spanIndex >= 0 && spanIndex < spans.length) {
                     spans[spanIndex].textContent = line[j];
                     spans[spanIndex].style.color = '#8B4513';
                     spans[spanIndex].setAttribute('data-campfire', 'true');
@@ -624,14 +684,20 @@ class Campfire {
         // Draw flames with wind effect
         for (let i = 0; i < flameArt.length; i++) {
             const row = this.gridY + i;
+            if (row >= maxRow) continue;
+            
             const line = flameArt[i];
             const windShift = Math.floor(this.windOffset * (3 - i) / 3); // More movement at top
             
             for (let j = 0; j < line.length; j++) {
+                if (line[j] === ' ') continue;
+                
                 const col = this.gridX + j - Math.floor(line.length / 2) + windShift;
+                if (col < 0 || col >= colsPerRow) continue;
+                
                 const spanIndex = row * colsPerRow + col;
                 
-                if (spanIndex >= 0 && spanIndex < spans.length && line[j] !== ' ') {
+                if (spanIndex >= 0 && spanIndex < spans.length) {
                     spans[spanIndex].textContent = line[j];
                     
                     // Animated flame colors
@@ -668,6 +734,12 @@ class Campfire {
             
             const smokeRow = Math.floor(particle.y);
             const smokeCol = Math.floor(particle.x);
+            
+            // Bounds checking
+            if (smokeRow < 0 || smokeRow >= maxRow || smokeCol < 0 || smokeCol >= colsPerRow) {
+                return false;
+            }
+            
             const smokeIndex = smokeRow * colsPerRow + smokeCol;
             
             if (smokeIndex >= 0 && smokeIndex < spans.length) {
@@ -708,6 +780,9 @@ function isPositionValid(x, y) {
 }
 
 function init() {
+    // Update cached grid dimensions
+    updateGridDimensions();
+    
     // Create stationary stars with proper spacing
     const starCount = 30;
     let attempts = 0;
@@ -727,17 +802,18 @@ function init() {
     // Create northern lights
     northernLights = new NorthernLights();
     
-    // Create campfire and pine tree at ground level (wait for ground level to be set)
+    // Create campfire and pine trees at ground level (wait for ground level to be set)
     setTimeout(() => {
-        // Position campfire so the wood sits on the ground line
-        const campfireHeight = 5 * lineHeight; // 5 lines of campfire art
-        campfire = new Campfire(canvas.width / 2, groundLevel - campfireHeight + lineHeight);
-        console.log('Campfire positioned at:', groundLevel - campfireHeight + lineHeight);
+        // Position campfire at ground using the consolidated config
+        campfire = new Campfire(canvas.width / 2, GroundConfig.positionAtGround(5)); // 5 rows tall
+        console.log('Campfire positioned at:', GroundConfig.positionAtGround(5));
         
-        // Position pine tree to the left of campfire
-        const treeHeight = 15 * lineHeight; // 15 lines of tree art
-        pineTree = new PineTree(canvas.width / 2 - 200, groundLevel - treeHeight + lineHeight);
-        console.log('Pine tree positioned at:', groundLevel - treeHeight + lineHeight);
+        // Position pine trees at ground (15 rows tall each)
+        pineTree = new PineTree(canvas.width * 0.25, GroundConfig.positionAtGround(15));
+        console.log('Pine tree 1 positioned at:', GroundConfig.positionAtGround(15));
+        
+        pineTree2 = new PineTree(canvas.width * 0.75, GroundConfig.positionAtGround(15));
+        console.log('Pine tree 2 positioned at:', GroundConfig.positionAtGround(15));
     }, 200);
     
     // Function to spawn shooting stars at random intervals
@@ -776,9 +852,12 @@ function animate() {
     // Draw stationary stars
     stars.forEach(star => star.draw());
     
-    // Draw pine tree
+    // Draw pine trees
     if (pineTree) {
         pineTree.draw();
+    }
+    if (pineTree2) {
+        pineTree2.draw();
     }
     
     // Draw campfire
@@ -790,42 +869,33 @@ function animate() {
     textArray.forEach(textParticle => textParticle.update());
     textArray = textArray.filter(textParticle => !textParticle.shouldRemove);
     
-    requestAnimationFrame(animate);
+    animationFrameId = requestAnimationFrame(animate);
 }
 
 function resetBackgroundCharacters() {
-    const spans = window.backgroundSpans || asciiBackground.querySelectorAll('span');
+    const spans = window.backgroundSpans;
+    if (!spans || spans.length === 0) return;
     
     for (let i = 0; i < spans.length; i++) {
+        const span = spans[i];
+        
         // Skip explosion marked spans only (they manage their own lifecycle)
-        if (spans[i].hasAttribute('data-explosion')) {
+        if (span.hasAttribute('data-explosion')) {
             continue;
         }
         
         // Reset to | character and base color
-        if (spans[i].textContent !== '|') {
-            spans[i].textContent = '|';
+        if (span.textContent !== '|') {
+            span.textContent = '|';
         }
-        spans[i].style.color = '#191919';
-    }
-    
-    // Clean up all temporary markers (they're redrawn each frame)
-    for (let i = 0; i < spans.length; i++) {
-        if (spans[i].hasAttribute('data-glisten')) {
-            spans[i].removeAttribute('data-glisten');
-        }
-        if (spans[i].hasAttribute('data-aurora')) {
-            spans[i].removeAttribute('data-aurora');
-        }
-        if (spans[i].hasAttribute('data-star')) {
-            spans[i].removeAttribute('data-star');
-        }
-        if (spans[i].hasAttribute('data-campfire')) {
-            spans[i].removeAttribute('data-campfire');
-        }
-        if (spans[i].hasAttribute('data-tree')) {
-            spans[i].removeAttribute('data-tree');
-        }
+        span.style.color = '#191919';
+        
+        // Clean up temporary markers (they're redrawn each frame)
+        span.removeAttribute('data-glisten');
+        span.removeAttribute('data-aurora');
+        span.removeAttribute('data-star');
+        span.removeAttribute('data-campfire');
+        span.removeAttribute('data-tree');
     }
 }
 
@@ -833,12 +903,21 @@ init();
 animate();
 
 window.addEventListener('resize', () => {
+    // Cancel ongoing animation
+    if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+        animationFrameId = null;
+    }
+    
+    // Clear explosion frames
+    explosionFrames.forEach(frameId => cancelAnimationFrame(frameId));
+    explosionFrames.clear();
+    
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
     generateAsciiBackground();
     
-    // Update ground level
-    groundLevel = getGroundLevel();
+    // Note: Ground level automatically updates via GroundConfig.level getter
     
     // Recreate stars with proper spacing
     stars = [];
@@ -856,8 +935,12 @@ window.addEventListener('resize', () => {
     
     moon = new Moon(canvas.width * 0.15, canvas.height * 0.2, 40);
     northernLights = new NorthernLights();
-    const campfireHeight = 5 * lineHeight;
-    campfire = new Campfire(canvas.width / 2, groundLevel - campfireHeight + lineHeight);
-    const treeHeight = 15 * lineHeight;
-    pineTree = new PineTree(canvas.width / 2 - 200, groundLevel - treeHeight + lineHeight);
+    
+    // Reposition campfire and trees using consolidated config
+    campfire = new Campfire(canvas.width / 2, GroundConfig.positionAtGround(5));
+    pineTree = new PineTree(canvas.width * 0.25, GroundConfig.positionAtGround(15));
+    pineTree2 = new PineTree(canvas.width * 0.75, GroundConfig.positionAtGround(15));
+    
+    // Restart animation
+    animate();
 });
