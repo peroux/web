@@ -932,7 +932,7 @@ window.addEventListener('resize', () => {
         attempts++;
     }
     
-    moon = new Moon(canvas.width * 0.15, canvas.height * 0.2, 40);
+    moon = new Moon(canvas.width * 0.15, canvas.height * 0.2, 50);
     northernLights = new NorthernLights();
     
     // Reposition campfire and trees using consolidated config
