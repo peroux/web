@@ -29,7 +29,7 @@ const GroundConfig = {
     
     // Get ground level in grid rows
     get row() {
-        return Math.floor(this.level / lineHeight);
+        return Math.ceil(this.level / lineHeight);
     },
     
     // Position an element at ground level given its height in grid rows
@@ -117,7 +117,7 @@ class TextParticle {
         // Check for ground collision
         if (this.y + this.dy >= GroundConfig.level) {
             if (!this.exploded) {
-                animateExplosion(this.x, GroundConfig.level, 5); // Explosion at ground level
+                animateExplosion(this.x, this.y, 4); // Explosion at ground level
                 this.exploded = true;
                 this.shouldRemove = true;
             }
@@ -161,14 +161,15 @@ function animateExplosion(x, y, radius) {
     
     // Calculate explosion position relative to ground
     const groundRow = GroundConfig.row;
-    const explosionCenterY = Math.max(0, groundRow - 1); // One grid space above ground
+    // Explosion should appear at ground row (first row below HR)
+    const explosionCenterY = groundRow;
     
     // Robust bounds checking
     const centerX = Math.floor(x / charWidth);
     const startX = Math.max(0, centerX - Math.floor(radius));
     const endX = Math.min(colsPerRow - 1, centerX + Math.ceil(radius));
     const startY = Math.max(0, explosionCenterY - Math.floor(radius));
-    const endY = Math.min(groundRow, explosionCenterY + Math.ceil(radius));
+    const endY = Math.min(groundRow + 1, explosionCenterY + Math.ceil(radius));
 
     let frame = 0;
     let frameId = null;
@@ -524,7 +525,7 @@ let moon;
 let northernLights;
 let campfire;
 let pineTree;
-let pineTree2;
+
 
 // Store animation frame IDs for cleanup
 let explosionFrames = new Set();
@@ -572,8 +573,10 @@ class PineTree {
             '⢀⣾⣿⣿⣿⢀⣴⣶⣤⡈⠛⠀⣄⡉⠀⢰⡄',
             '⢠⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣤⣿⣿⣿⣶⣿⡄',
             '⠉⠉⠿⠿⠛⠋⣿⣿⡟⠿⡿⠉⠛⠿⠿⠛⠋',
-            '      ⢀⣿⣿⡇      ',
-            '      ⠘⠛⠛⠓      '
+            '      ⢸⣿⣿      ',
+            '      ⢸⣿⣿      ',
+            '      ⣸⣿⣿      ',
+            '        ⣼⢸⣿⣿⣷⣄      '
         ];
         
         // Draw tree with subtle wind effect
@@ -676,8 +679,8 @@ class Campfire {
         
         // Animated flames
         const flameArt = [
-            '     .(',
-            '    /%/\\',
+            '   .|,',
+            '   /%\\',
             '  (%(%))' 
         ];
         
@@ -809,11 +812,9 @@ function init() {
         console.log('Campfire positioned at:', GroundConfig.positionAtGround(5));
         
         // Position pine trees at ground (15 rows tall each)
-        pineTree = new PineTree(canvas.width * 0.25, GroundConfig.positionAtGround(15));
+        pineTree = new PineTree(canvas.width * 0.75, GroundConfig.positionAtGround(18.5));
         console.log('Pine tree 1 positioned at:', GroundConfig.positionAtGround(15));
         
-        pineTree2 = new PineTree(canvas.width * 0.75, GroundConfig.positionAtGround(15));
-        console.log('Pine tree 2 positioned at:', GroundConfig.positionAtGround(15));
     }, 200);
     
     // Function to spawn shooting stars at random intervals
@@ -856,9 +857,7 @@ function animate() {
     if (pineTree) {
         pineTree.draw();
     }
-    if (pineTree2) {
-        pineTree2.draw();
-    }
+
     
     // Draw campfire
     if (campfire) {
@@ -938,9 +937,8 @@ window.addEventListener('resize', () => {
     
     // Reposition campfire and trees using consolidated config
     campfire = new Campfire(canvas.width / 2, GroundConfig.positionAtGround(5));
-    pineTree = new PineTree(canvas.width * 0.25, GroundConfig.positionAtGround(15));
-    pineTree2 = new PineTree(canvas.width * 0.75, GroundConfig.positionAtGround(15));
-    
+    pineTree = new PineTree(canvas.width * 0.75, GroundConfig.positionAtGround(30));
+
     // Restart animation
     animate();
 });
