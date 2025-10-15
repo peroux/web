@@ -559,7 +559,7 @@ class PineTree {
         const time = Date.now();
         
         // Pine tree ASCII art using braille characters
-        const treeArt = [
+        const treeArt = [ // Doesn't update???
             '        ⢀        ',
             '      ⣰⣿⣄      ',
             '    ⢀⣼⣿⡿⣿⣦⡀    ',
